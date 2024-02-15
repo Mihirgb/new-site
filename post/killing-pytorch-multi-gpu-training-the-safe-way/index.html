@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="generator" content="Source Themes Academic 4.3.1">
+
+  
+
+  
+  
+  
+  
+  
+    
+    
+    
+  
+  
+
+  <meta name="author" content="Jianchao Li">
+
+  
+  
+  
+    
+  
+  <meta name="description" content="Recently I was working with PyTorch multi-GPU training and I came across a nightmare GPU memory problem. After some expensive trial and error, I finally found a solution for it.">
+
+  
+  <link rel="alternate" hreflang="en-us" href="https://jianchao-li.github.io/post/killing-pytorch-multi-gpu-training-the-safe-way/">
+
+  
+
+
+  
+
+  
+  
+  
+  <meta name="theme-color" content="#2962ff">
+  
+
+  
+  
+  
+  
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/academicons/1.8.6/css/academicons.min.css" integrity="sha256-uFVgMKfistnJAfoCUQigIl+JfUaP47GrRKjf6CTPVmw=" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.0/css/all.css" integrity="sha384-aOkxzJ5uQz7WBObEZcHvV5JvRW3TUc2rNPA7pe3AwnsUohiw1Vj2Rgx2KSOkF5+h" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/fancybox/3.2.5/jquery.fancybox.min.css" integrity="sha256-ygkqlh3CYSUri3LhQxzdcm0n1EQvH2Y+U5S2idbLtxs=" crossorigin="anonymous">
+
+    
+    
+    
+      
+    
+    
+      
+      
+        
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.6/styles/github.min.css" crossorigin="anonymous" title="hl-light">
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.6/styles/dracula.min.css" crossorigin="anonymous" title="hl-dark" disabled>
+        
+      
+    
+
+    
+
+    
+
+  
+
+  
+  
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Montserrat:400,700|Roboto:400,400italic,700|Roboto+Mono">
+  
+
+  
+  
+  
+  <link rel="stylesheet" href="/css/academic.min.aebf6ad474c2ff50ae0b78ca18c392cf.css">
+
+  
+
+  
+  
+    <script>
+      window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
+      ga('create', 'UA-149941944-1', 'auto');
+      
+      ga('require', 'eventTracker');
+      ga('require', 'outboundLinkTracker');
+      ga('require', 'urlChangeTracker');
+      ga('send', 'pageview');
+    </script>
+    <script async src="//www.google-analytics.com/analytics.js"></script>
+    
+    <script async src="https://cdnjs.cloudflare.com/ajax/libs/autotrack/2.4.1/autotrack.js" integrity="sha512-HUmooslVKj4m6OBu0OgzjXXr+QuFYy/k7eLI5jdeEy/F4RSgMn6XRWRGkFi5IFaFgy7uFTkegp3Z0XnJf3Jq+g==" crossorigin="anonymous"></script>
+    
+  
+  
+
+  
+
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="icon" type="image/png" href="/img/icon.png">
+  <link rel="apple-touch-icon" type="image/png" href="/img/icon-192.png">
+
+  <link rel="canonical" href="https://jianchao-li.github.io/post/killing-pytorch-multi-gpu-training-the-safe-way/">
+
+  
+  
+  
+  
+    
+    
+  
+  <meta property="twitter:card" content="summary">
+  
+  <meta property="og:site_name" content="Jianchao Li">
+  <meta property="og:url" content="https://jianchao-li.github.io/post/killing-pytorch-multi-gpu-training-the-safe-way/">
+  <meta property="og:title" content="Killing Pytorch Multi Gpu Training the Safe Way | Jianchao Li">
+  <meta property="og:description" content="Recently I was working with PyTorch multi-GPU training and I came across a nightmare GPU memory problem. After some expensive trial and error, I finally found a solution for it."><meta property="og:image" content="https://jianchao-li.github.io/img/icon-192.png">
+  <meta property="og:locale" content="en-us">
+  
+  <meta property="article:published_time" content="2018-11-02T14:58:10&#43;08:00">
+  
+  <meta property="article:modified_time" content="2018-11-02T14:58:10&#43;08:00">
+  
+
+  
+
+
+  
+
+
+
+
+
+  <title>Killing Pytorch Multi Gpu Training the Safe Way | Jianchao Li</title>
+
+</head>
+
+
+<body id="top" data-spy="scroll" data-target="#TableOfContents" data-offset="71" >
+
+  <aside class="search-results" id="search">
+  <div class="container">
+    <section class="search-header">
+
+      <div class="row no-gutters justify-content-between mb-3">
+        <div class="col-6">
+          <h1>Search</h1>
+        </div>
+        <div class="col-6 col-search-close">
+          <a class="js-search" href="#"><i class="fas fa-times-circle text-muted" aria-hidden="true"></i></a>
+        </div>
+      </div>
+
+      <div id="search-box">
+        
+        <input name="q" id="search-query" placeholder="Search..." autocapitalize="off"
+        autocomplete="off" autocorrect="off" role="textbox" spellcheck="false" type="search">
+        
+      </div>
+
+    </section>
+    <section class="section-search-results">
+
+      <div id="search-hits">
+        
+      </div>
+
+    </section>
+  </div>
+</aside>
+
+
+  
+<nav class="navbar navbar-light fixed-top navbar-expand-lg py-0" id="navbar-main">
+  <div class="container">
+
+    
+      <a class="navbar-brand" href="/">Jianchao Li</a>
+      
+      <button type="button" class="navbar-toggler" data-toggle="collapse"
+              data-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
+        <span><i class="fas fa-bars"></i></span>
+      </button>
+      
+
+    
+    <div class="collapse navbar-collapse" id="navbar">
+
+      
+      
+      <ul class="navbar-nav mr-auto">
+        
+
+        
+
+        
+        
+        
+          
+        
+
+        
+        
+        
+        
+        
+        
+          
+          
+          
+            
+          
+          
+        
+
+        <li class="nav-item">
+          <a class="nav-link " href="/#about">
+            
+            <span>Home</span>
+            
+          </a>
+        </li>
+
+        
+        
+
+        
+
+        
+        
+        
+          
+        
+
+        
+        
+        
+        
+        
+        
+          
+          
+          
+            
+          
+          
+        
+
+        <li class="nav-item">
+          <a class="nav-link " href="/#experience">
+            
+            <span>Experience</span>
+            
+          </a>
+        </li>
+
+        
+        
+
+        
+
+        
+        
+        
+          
+        
+
+        
+        
+        
+        
+        
+        
+          
+          
+          
+            
+          
+          
+        
+
+        <li class="nav-item">
+          <a class="nav-link " href="/#accomplishments">
+            
+            <span>Accomplishments</span>
+            
+          </a>
+        </li>
+
+        
+        
+
+        
+
+        
+        
+        
+          
+        
+
+        
+        
+        
+        
+        
+        
+          
+          
+          
+            
+          
+          
+        
+
+        <li class="nav-item">
+          <a class="nav-link " href="/#publications">
+            
+            <span>Publications</span>
+            
+          </a>
+        </li>
+
+        
+        
+
+        
+
+        
+        
+        
+          
+        
+
+        
+        
+        
+        
+        
+        
+          
+          
+          
+            
+          
+          
+        
+
+        <li class="nav-item">
+          <a class="nav-link " href="/#posts">
+            
+            <span>Posts</span>
+            
+          </a>
+        </li>
+
+        
+        
+
+      
+      </ul>
+      <ul class="navbar-nav ml-auto">
+      
+
+        
+
+        
+        <li class="nav-item">
+          <a class="nav-link js-search" href="#"><i class="fas fa-search" aria-hidden="true"></i></a>
+        </li>
+        
+
+        
+
+        
+        <li class="nav-item">
+          <a class="nav-link js-dark-toggle" href="#"><i class="fas fa-moon" aria-hidden="true"></i></a>
+        </li>
+        
+
+      </ul>
+
+    </div>
+  </div>
+</nav>
+
+
+  <article class="article" itemscope itemtype="http://schema.org/Article">
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+  
+  
+<div class="article-container pt-3">
+  <h1 itemprop="name">Killing Pytorch Multi Gpu Training the Safe Way</h1>
+
+  
+
+  
+    
+
+
+
+<meta content="2018-11-02 14:58:10 &#43;0800 &#43;0800" itemprop="datePublished">
+<meta content="2018-11-02 14:58:10 &#43;0800 &#43;0800" itemprop="dateModified">
+
+<div class="article-metadata">
+
+  
+  
+
+  
+  <span class="article-date">
+    
+    
+      
+    
+    <time>Nov 2, 2018</time>
+  </span>
+  
+
+  
+
+  
+  <span class="middot-divider"></span>
+  <span class="article-reading-time">
+    14 min read
+  </span>
+  
+
+  
+  
+
+  
+  
+
+  
+    
+<div class="share-box" aria-hidden="true">
+  <ul class="share">
+    <li>
+      <a class="twitter"
+         href="https://twitter.com/intent/tweet?text=Killing%20Pytorch%20Multi%20Gpu%20Training%20the%20Safe%20Way&amp;url=https%3a%2f%2fjianchao-li.github.io%2fpost%2fkilling-pytorch-multi-gpu-training-the-safe-way%2f"
+         target="_blank" rel="noopener">
+        <i class="fab fa-twitter"></i>
+      </a>
+    </li>
+    <li>
+      <a class="facebook"
+         href="https://www.facebook.com/sharer.php?u=https%3a%2f%2fjianchao-li.github.io%2fpost%2fkilling-pytorch-multi-gpu-training-the-safe-way%2f"
+         target="_blank" rel="noopener">
+        <i class="fab fa-facebook-f"></i>
+      </a>
+    </li>
+    <li>
+      <a class="linkedin"
+         href="https://www.linkedin.com/shareArticle?mini=true&amp;url=https%3a%2f%2fjianchao-li.github.io%2fpost%2fkilling-pytorch-multi-gpu-training-the-safe-way%2f&amp;title=Killing%20Pytorch%20Multi%20Gpu%20Training%20the%20Safe%20Way"
+         target="_blank" rel="noopener">
+        <i class="fab fa-linkedin-in"></i>
+      </a>
+    </li>
+    <li>
+      <a class="weibo"
+         href="http://service.weibo.com/share/share.php?url=https%3a%2f%2fjianchao-li.github.io%2fpost%2fkilling-pytorch-multi-gpu-training-the-safe-way%2f&amp;title=Killing%20Pytorch%20Multi%20Gpu%20Training%20the%20Safe%20Way"
+         target="_blank" rel="noopener">
+        <i class="fab fa-weibo"></i>
+      </a>
+    </li>
+    <li>
+      <a class="email"
+         href="mailto:?subject=Killing%20Pytorch%20Multi%20Gpu%20Training%20the%20Safe%20Way&amp;body=https%3a%2f%2fjianchao-li.github.io%2fpost%2fkilling-pytorch-multi-gpu-training-the-safe-way%2f">
+        <i class="fas fa-envelope"></i>
+      </a>
+    </li>
+  </ul>
+</div>
+
+
+  
+
+</div>
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+</div>
+
+
+
+  <div class="article-container">
+
+    <div class="article-style" itemprop="articleBody">
+      <p>As you may have noticed from the title, this post is somewhat different from my previous ones. I would like to talk about a PyTorch DataLoader issue I encountered recently. I feel like devoting a post to it because it has taken me long time to figure out how to fix it.</p>
+<h2 id="memory-consumption">Memory consumption</h2>
+<p>Since my last post on <a href="https://jianchao-li.github.io/2018/09/15/understanding-fully-convolutional-networks/">FCNs</a>, I have been working on semantic segmentation. Nowadays, we have deep neural networks for it, like the state-of-the-art <a href="https://arxiv.org/abs/1612.01105">PSPNet</a> from CVPR 2017.</p>
+<p>In practice, segmentation networks are <strong>much more memory-intensive</strong> than recognition/classification networks. The reason is that semantic segmentation requires dense pixel-level predictions. For example, in the ImageNet classification task, you may use a neural network to transform a 224x224 image into 1000 real numbers (class probabilities). However, in semantic segmentation, suppose you have 20 semantic classes, you need to transform the 224x224 image into 20 224x224 probability maps, each representing probabilities of pixels belonging to one class. The output size changes from 1000 to 20x224x224=1003520, which is more than 1000 times!</p>
+<p>Besides the output, the intermediate feature maps in segmentation networks also consume more memory. In recognition networks, sizes of intermediate feature maps usually decrease monotically. However, since segmentation requires output of the same spatial dimension as the input, the feature maps will go through an extra process with their sizes increased (upsampled) back to the size of the input image. This extra upsample process further increases the memory consumption of segmentation networks.</p>
+<p>So, when we fit segmentation networks on a GPU, we need to reduce the batch size of the data. However, batch size is crucial to the performance of networks, especially those containing the batch normalization layer. Since no more data can be held in a single GPU, a natural soltuion is to use multiple GPUs and split the data across them (or more formally, <em>data parallelism</em>).</p>
+<h2 id="synchronized-batch-normalization">Synchronized batch normalization</h2>
+<p>Here I would like to make a digression and mention an interesting layer, the synchronized batch normalization layer, which is introduced to increase the <em>working batch size</em> for multi-GPU training. You may refer to the section <strong>Cross-GPU Batch Normalization</strong> in <a href="https://arxiv.org/abs/1711.07240">MegDet</a> for more details.</p>
+<p>When we use data parallelism to train on multiple GPUs, a batch of images will be splitted across several GPUs. Suppose your batch size is 16 (a common setting in semantic segmentation) and you train on 8 GPUs with data parallelism, then each GPU will have 2 images. A normal batch norm layer will only uses the 2 images on a single GPU to compute the mean and standard deviation, which is highly inaccurate and will make the training unstable.</p>
+<p>To effectively increase the working batch size, we need to synchronize all the GPUs in the batch norm layer, and fetch the mean and standard deviation computed at each GPU to compute a global value using all images. This is what synchronized batch norm layer does. If you would like to learn more about its implementation details, you may have a look at <a href="https://github.com/vacancy/Synchronized-BatchNorm-PyTorch">Synchronized-BatchNorm-PyTorch</a>.</p>
+<h2 id="the-issue">The Issue</h2>
+<p>After so much background information, the main idea is that semantic segmentation networks are very memory-intensive and require multiple GPUs to train a reasonable batch size. And synchronized batch norm can be used to increase the working batch size in multi-GPU training.</p>
+<p>Now comes the issue that I encountered recently. I was working with a semantic segmentation codebase written in PyTorch on a machine with 8 GPUs. The codebase incorporates synchronized batch norm and uses PyTorch multiprocessing for its custom DataLoader. I ran the training program for some time and then I killed it (I was running the program in a virtualized docker container in a cloud GPU cluster. So killing it is just to click a button in the cloud GUI).</p>
+<p>Then I checked the GPUs using <code>nvidia-smi</code> and everything looked good.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>+-----------------------------------------------------------------------------+
+</span></span><span style="display:flex;"><span>| NVIDIA-SMI 390.46                 Driver Version: 390.46                    |
+</span></span><span style="display:flex;"><span>|-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+</span></span><span style="display:flex;"><span>| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+</span></span><span style="display:flex;"><span>|<span style="color:#f92672">===============================</span>+<span style="color:#f92672">======================</span>+<span style="color:#f92672">======================</span>|
+</span></span><span style="display:flex;"><span>|   <span style="color:#ae81ff">0</span>  Tesla V100-PCIE...  Off  | 00000000:1A:00.0 Off |                    <span style="color:#ae81ff">0</span> |
+</span></span><span style="display:flex;"><span>| N/A   32C    P0    25W / 250W |     11MiB / 16160MiB |      0%      Default |
+</span></span><span style="display:flex;"><span>+-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>|   <span style="color:#ae81ff">1</span>  Tesla V100-PCIE...  Off  | 00000000:1F:00.0 Off |                    <span style="color:#ae81ff">0</span> |
+</span></span><span style="display:flex;"><span>| N/A   34C    P0    25W / 250W |     11MiB / 16160MiB |      0%      Default |
+</span></span><span style="display:flex;"><span>+-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>|   <span style="color:#ae81ff">2</span>  Tesla V100-PCIE...  Off  | 00000000:20:00.0 Off |                    <span style="color:#ae81ff">0</span> |
+</span></span><span style="display:flex;"><span>| N/A   33C    P0    25W / 250W |     11MiB / 16160MiB |      0%      Default |
+</span></span><span style="display:flex;"><span>+-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>|   <span style="color:#ae81ff">3</span>  Tesla V100-PCIE...  Off  | 00000000:21:00.0 Off |                    <span style="color:#ae81ff">0</span> |
+</span></span><span style="display:flex;"><span>| N/A   33C    P0    23W / 250W |     11MiB / 16160MiB |      0%      Default |
+</span></span><span style="display:flex;"><span>+-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>|   <span style="color:#ae81ff">4</span>  Tesla V100-PCIE...  Off  | 00000000:B2:00.0 Off |                    <span style="color:#ae81ff">0</span> |
+</span></span><span style="display:flex;"><span>| N/A   32C    P0    26W / 250W |     11MiB / 16160MiB |      0%      Default |
+</span></span><span style="display:flex;"><span>+-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>|   <span style="color:#ae81ff">5</span>  Tesla V100-PCIE...  Off  | 00000000:B3:00.0 Off |                    <span style="color:#ae81ff">0</span> |
+</span></span><span style="display:flex;"><span>| N/A   35C    P0    26W / 250W |     11MiB / 16160MiB |      0%      Default |
+</span></span><span style="display:flex;"><span>+-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>|   <span style="color:#ae81ff">6</span>  Tesla V100-PCIE...  Off  | 00000000:B4:00.0 Off |                    <span style="color:#ae81ff">0</span> |
+</span></span><span style="display:flex;"><span>| N/A   34C    P0    25W / 250W |     11MiB / 16160MiB |      0%      Default |
+</span></span><span style="display:flex;"><span>+-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>|   <span style="color:#ae81ff">7</span>  Tesla V100-PCIE...  Off  | 00000000:B5:00.0 Off |                    <span style="color:#ae81ff">0</span> |
+</span></span><span style="display:flex;"><span>| N/A   35C    P0    25W / 250W |     11MiB / 16160MiB |      0%      Default |
+</span></span><span style="display:flex;"><span>+-------------------------------+----------------------+----------------------+
+</span></span><span style="display:flex;"><span>                                                                               
+</span></span><span style="display:flex;"><span>+-----------------------------------------------------------------------------+
+</span></span><span style="display:flex;"><span>| Processes:                                                       GPU Memory |
+</span></span><span style="display:flex;"><span>|  GPU       PID   Type   Process name                             Usage      |
+</span></span><span style="display:flex;"><span>|<span style="color:#f92672">=============================================================================</span>|
+</span></span><span style="display:flex;"><span>|  No running processes found                                                 |
+</span></span><span style="display:flex;"><span>+-----------------------------------------------------------------------------+
+</span></span></code></pre></div><p>But then when I tried to start a new training program. An OOM error occurred. For the sake of privacy, some traceback logs were omitted by <code>...</code>.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>Traceback <span style="color:#f92672">(</span>most recent call last<span style="color:#f92672">)</span>:
+</span></span><span style="display:flex;"><span>  ...
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/site-packages/torch/cuda/streams.py&#34;</span>, line 21, in __new__
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> super<span style="color:#f92672">(</span>Stream, cls<span style="color:#f92672">)</span>.__new__<span style="color:#f92672">(</span>cls, priority<span style="color:#f92672">=</span>priority, **kwargs<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>RuntimeError: CUDA error <span style="color:#f92672">(</span>2<span style="color:#f92672">)</span>: out of memory
+</span></span><span style="display:flex;"><span>Exception in thread Thread-1:
+</span></span><span style="display:flex;"><span>Traceback <span style="color:#f92672">(</span>most recent call last<span style="color:#f92672">)</span>:
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/threading.py&#34;</span>, line 916, in _bootstrap_inner
+</span></span><span style="display:flex;"><span>    self.run<span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/threading.py&#34;</span>, line 864, in run
+</span></span><span style="display:flex;"><span>    self._target<span style="color:#f92672">(</span>*self._args, **self._kwargs<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  ...
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/multiprocessing/queues.py&#34;</span>, line 337, in get
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> _ForkingPickler.loads<span style="color:#f92672">(</span>res<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/site-packages/torch/multiprocessing/reductions.py&#34;</span>, line 151, in rebuild_storage_fd
+</span></span><span style="display:flex;"><span>    fd <span style="color:#f92672">=</span> df.detach<span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/multiprocessing/resource_sharer.py&#34;</span>, line 57, in detach
+</span></span><span style="display:flex;"><span>    with _resource_sharer.get_connection<span style="color:#f92672">(</span>self._id<span style="color:#f92672">)</span> as conn:
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/multiprocessing/resource_sharer.py&#34;</span>, line 87, in get_connection
+</span></span><span style="display:flex;"><span>    c <span style="color:#f92672">=</span> Client<span style="color:#f92672">(</span>address, authkey<span style="color:#f92672">=</span>process.current_process<span style="color:#f92672">()</span>.authkey<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/multiprocessing/connection.py&#34;</span>, line 493, in Client
+</span></span><span style="display:flex;"><span>    answer_challenge<span style="color:#f92672">(</span>c, authkey<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/multiprocessing/connection.py&#34;</span>, line 732, in answer_challenge
+</span></span><span style="display:flex;"><span>    message <span style="color:#f92672">=</span> connection.recv_bytes<span style="color:#f92672">(</span>256<span style="color:#f92672">)</span>         <span style="color:#75715e"># reject large message</span>
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/multiprocessing/connection.py&#34;</span>, line 216, in recv_bytes
+</span></span><span style="display:flex;"><span>    buf <span style="color:#f92672">=</span> self._recv_bytes<span style="color:#f92672">(</span>maxlength<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/multiprocessing/connection.py&#34;</span>, line 407, in _recv_bytes
+</span></span><span style="display:flex;"><span>    buf <span style="color:#f92672">=</span> self._recv<span style="color:#f92672">(</span>4<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  File <span style="color:#e6db74">&#34;/usr/local/lib/python3.6/multiprocessing/connection.py&#34;</span>, line 379, in _recv
+</span></span><span style="display:flex;"><span>    chunk <span style="color:#f92672">=</span> read<span style="color:#f92672">(</span>handle, remaining<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>ConnectionResetError: <span style="color:#f92672">[</span>Errno 104<span style="color:#f92672">]</span> Connection reset by peer
+</span></span></code></pre></div><p>I ran <code>nvidia-smi</code> again and everything still seemed good. So I wrote a <code>check.cu</code> to check the GPU memory using CUDA APIs.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&lt;iostream&gt;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;cuda.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;cuda_runtime_api.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>  
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">using</span> <span style="color:#66d9ef">namespace</span> std;
+</span></span><span style="display:flex;"><span>  
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">int</span> <span style="color:#a6e22e">main</span>( <span style="color:#66d9ef">void</span> ) {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> num_gpus;
+</span></span><span style="display:flex;"><span>    size_t free, total;
+</span></span><span style="display:flex;"><span>    cudaGetDeviceCount( <span style="color:#f92672">&amp;</span>num_gpus );
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> ( <span style="color:#66d9ef">int</span> gpu_id <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; gpu_id <span style="color:#f92672">&lt;</span> num_gpus; gpu_id<span style="color:#f92672">++</span> ) {
+</span></span><span style="display:flex;"><span>        cudaSetDevice( gpu_id );
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">int</span> id;
+</span></span><span style="display:flex;"><span>        cudaGetDevice( <span style="color:#f92672">&amp;</span>id );
+</span></span><span style="display:flex;"><span>        cudaMemGetInfo( <span style="color:#f92672">&amp;</span>free, <span style="color:#f92672">&amp;</span>total );
+</span></span><span style="display:flex;"><span>        cout <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;GPU &#34;</span> <span style="color:#f92672">&lt;&lt;</span> id <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34; memory: free=&#34;</span> <span style="color:#f92672">&lt;&lt;</span> free <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;, total=&#34;</span> <span style="color:#f92672">&lt;&lt;</span> total <span style="color:#f92672">&lt;&lt;</span> endl;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Again, everything looked good.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ nvcc check.cu -o check <span style="color:#f92672">&amp;&amp;</span> ./check
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">0</span> memory: free<span style="color:#f92672">=</span>16488464384, total<span style="color:#f92672">=</span><span style="color:#ae81ff">16945512448</span>
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">1</span> memory: free<span style="color:#f92672">=</span>16488464384, total<span style="color:#f92672">=</span><span style="color:#ae81ff">16945512448</span>
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">2</span> memory: free<span style="color:#f92672">=</span>16488464384, total<span style="color:#f92672">=</span><span style="color:#ae81ff">16945512448</span>
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">3</span> memory: free<span style="color:#f92672">=</span>16488464384, total<span style="color:#f92672">=</span><span style="color:#ae81ff">16945512448</span>
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">4</span> memory: free<span style="color:#f92672">=</span>16488464384, total<span style="color:#f92672">=</span><span style="color:#ae81ff">16945512448</span>
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">5</span> memory: free<span style="color:#f92672">=</span>16488464384, total<span style="color:#f92672">=</span><span style="color:#ae81ff">16945512448</span>
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">6</span> memory: free<span style="color:#f92672">=</span>16488464384, total<span style="color:#f92672">=</span><span style="color:#ae81ff">16945512448</span>
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">7</span> memory: free<span style="color:#f92672">=</span>16488464384, total<span style="color:#f92672">=</span><span style="color:#ae81ff">16945512448</span>
+</span></span></code></pre></div><p>Since the error happened to PyTorch, I moved on to write a <code>check.py</code>, which created a single-element PyTorch CUDA tensor for sanity check. And this script reproduced the OOM error.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-python" data-lang="python"><span style="display:flex;"><span><span style="color:#f92672">import</span> torch
+</span></span><span style="display:flex;"><span> 
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span> __name__ <span style="color:#f92672">==</span> <span style="color:#e6db74">&#39;__main__&#39;</span>:
+</span></span><span style="display:flex;"><span>    num_gpus <span style="color:#f92672">=</span> torch<span style="color:#f92672">.</span>cuda<span style="color:#f92672">.</span>device_count()
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> gpu_id <span style="color:#f92672">in</span> range(num_gpus):
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">try</span>:
+</span></span><span style="display:flex;"><span>	    torch<span style="color:#f92672">.</span>cuda<span style="color:#f92672">.</span>set_device(gpu_id)
+</span></span><span style="display:flex;"><span>	    torch<span style="color:#f92672">.</span>randn(<span style="color:#ae81ff">1</span>, device<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;cuda&#39;</span>)
+</span></span><span style="display:flex;"><span>	    print(<span style="color:#e6db74">&#39;GPU </span><span style="color:#e6db74">{}</span><span style="color:#e6db74"> is good&#39;</span><span style="color:#f92672">.</span>format(gpu_id))
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">except</span> <span style="color:#a6e22e">Exception</span> <span style="color:#66d9ef">as</span> exec:
+</span></span><span style="display:flex;"><span>            print(<span style="color:#e6db74">&#39;GPU </span><span style="color:#e6db74">{}</span><span style="color:#e6db74"> is bad: </span><span style="color:#e6db74">{}</span><span style="color:#e6db74">&#39;</span><span style="color:#f92672">.</span>format(gpu_id, exec))
+</span></span></code></pre></div><p>The output was as follows: GPU 1 and 2 were OOM.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ python3 check.py 
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">0</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">1</span> is bad: CUDA error: out of memory
+</span></span><span style="display:flex;"><span>THCudaCheck FAIL file<span style="color:#f92672">=</span>/pytorch/aten/src/THC/THCGeneral.cpp line<span style="color:#f92672">=</span><span style="color:#ae81ff">663</span> error<span style="color:#f92672">=</span><span style="color:#ae81ff">2</span> : out of memory
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">2</span> is bad: cuda runtime error <span style="color:#f92672">(</span>2<span style="color:#f92672">)</span> : out of memory at /pytorch/aten/src/THC/THCGeneral.cpp:663
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">3</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">4</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">5</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">6</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">7</span> is good
+</span></span></code></pre></div><p>So, my GPUs 2 and 3 should be magically occupied by some zombie process. And I had to restart the machine to fix it. I think the zombie process was generated due to my incorrect way of killing the training program. So I decided not to use the kill button in the cloud GUI but logged into the docker container to kill it in the terminal.</p>
+<p>I searched on Google for how to kill a PyTorch multi-GPU training program. And I found <a href="https://discuss.pytorch.org/u/smth/summary">@smth</a>&rsquo;s suggestion in <a href="https://discuss.pytorch.org/t/pytorch-doesnt-free-gpus-memory-of-it-gets-aborted-due-to-out-of-memory-error/13775/14?u=jianchao-li">this reply</a>.</p>
+<blockquote>
+<p>@rabst
+so, I remember this issue. When investigating, we found that there’s actually a bug in python multiprocessing that might keep the child process hanging around, as zombie processes.
+It is not even visible to <code>nvidia-smi</code> .
+The solution is <code>killall python</code> , or to <code>ps -elf | grep python</code> and find them and <code>kill -9 [pid]</code> to them.</p>
+</blockquote>
+<p>It explained why <code>nvidia-smi</code> failed to reveal the memory issue. Great! But, the above commands did not work for me&hellip;</p>
+<blockquote>
+<p>Nothing is so fatiguing as the eternal haning on of an uncompleted task.</p>
+<!-- raw HTML omitted -->
+</blockquote>
+<h2 id="the-solution">The Solution</h2>
+<p>After several days of searching, failing, searching again, failing again etc., I finally found one solution. It is just to find out the processes that occupied the GPUs and kill them. To find out those processes, I ran <code>fuser -v /dev/nvidia*</code>, which listed all the processes that were occupying my NVIDIA GPUs. Since I have 8 GPUs, the output of this command is a bit log.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ fuser -v /dev/nvidia*
+</span></span><span style="display:flex;"><span>                     USER        PID ACCESS COMMAND
+</span></span><span style="display:flex;"><span>/dev/nvidia0:        root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidia1:        root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidia2:        root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidia3:        root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidia4:        root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidia5:        root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidia6:        root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidia7:        root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidiactl:      root       <span style="color:#ae81ff">5284</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F...m python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F...m python3
+</span></span><span style="display:flex;"><span>/dev/nvidia-uvm:     root       <span style="color:#ae81ff">5284</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5416</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5417</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5418</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5419</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5420</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5421</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5422</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5423</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5424</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5425</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5426</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5427</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5428</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5429</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5430</span> F.... python3
+</span></span><span style="display:flex;"><span>                     root       <span style="color:#ae81ff">5431</span> F.... python3
+</span></span></code></pre></div><p>As can be seen from above, the main process had a PID of 5284. I spawned 16 workers for the DataLoader so there were 16 subprocesses whose PIDs were consecutive (from 5416 to 5431). First I used <code>kill -9</code> to kill all of them. Then killed the main process.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ <span style="color:#66d9ef">for</span> pid in <span style="color:#f92672">{</span>5416..5431<span style="color:#f92672">}</span>; <span style="color:#66d9ef">do</span> kill -9 $pid; <span style="color:#66d9ef">done</span> <span style="color:#75715e"># kill subprocesses</span>
+</span></span><span style="display:flex;"><span>$ kill -9 <span style="color:#ae81ff">5284</span> <span style="color:#75715e"># kill main process</span>
+</span></span></code></pre></div><p>After killing the subprocesses and main process, I ran <code>check.py</code> again and this time every GPU was good.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ python3 check.py 
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">0</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">1</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">2</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">3</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">4</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">5</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">6</span> is good
+</span></span><span style="display:flex;"><span>GPU <span style="color:#ae81ff">7</span> is good
+</span></span></code></pre></div><h2 id="another-trick">Another Trick</h2>
+<p>If the above solution still does not work for you (it does happen to me sometimes), the following trick may be helpful. First, find out the training loop of your program. In most cases it will contain a loop based on the number of iterations. Then add the following code to that loop.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-python" data-lang="python"><span style="display:flex;"><span><span style="color:#66d9ef">if</span> os<span style="color:#f92672">.</span>path<span style="color:#f92672">.</span>isfile(<span style="color:#e6db74">&#39;kill.me&#39;</span>):
+</span></span><span style="display:flex;"><span>    num_gpus <span style="color:#f92672">=</span> torch<span style="color:#f92672">.</span>cuda<span style="color:#f92672">.</span>device_count()
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">for</span> gpu_id <span style="color:#f92672">in</span> range(num_gpus):
+</span></span><span style="display:flex;"><span>        torch<span style="color:#f92672">.</span>cuda<span style="color:#f92672">.</span>set_device(gpu_id)
+</span></span><span style="display:flex;"><span>        torch<span style="color:#f92672">.</span>cuda<span style="color:#f92672">.</span>empty_cache()
+</span></span><span style="display:flex;"><span>    exit(<span style="color:#ae81ff">0</span>)
+</span></span></code></pre></div><p>Inside the <code>if</code> statement, the code empties the caches of all GPUs and exits. After you add this code to the training iteration, once you want to stop it, just <code>cd</code> into the directory of the training program and run</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>touch kill.me
+</span></span></code></pre></div><p>Then in the current or next iteration (based on whether the above code has been executed), the <code>if</code> check will become true and all GPUs will be cleared and the program will exit. Since you directly tell Python to exit in the program, it will take care of everything for you. You may use anything instead of <code>kill.me</code>. But just make sure it is special enough and thus you will not terminate the training inadvertently by creating a file with the same name.</p>
+<h2 id="conclusions">Conclusions</h2>
+<p>The issue made me stuck for long time. And in this process of looking for the solution, I made some expensive trial and error. Several GPU servers in the cloud had a card OOM due to my incorrect way of killing the training program. And I had to ask the administrators to restart them. So I would definitely like others to avoid such a case.</p>
+<p>From another perspective, I would like to highlight the importance of engineering capabilities and experiences. Though I was working on semantic segmentation, I spent most of my time digging through all sorts of problems while running the multi-GPU codes.</p>
+<p>A final remark, I would not like to leave you an impression that I am blaming the issue on PyTorch, CUDA, the cloud GPU cluster, or any others. Actually it is mainly due to that I do not understand how PyTorch multi-GPU and multiprocessing work. And I think I will need to study these topics more systematically. Hopefully I will write a new post after learning more about them :-)</p>
+
+    </div>
+
+    
+
+
+
+    
+      
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+  
+  
+    
+  
+  
+  <div class="media author-card" itemscope itemtype="http://schema.org/Person">
+    
+      
+      <img class="portrait mr-3" src="/authors/admin/avatar_hu4bb88a0a1bb1760b1f60789d994d0945_297153_250x250_fill_q90_lanczos_center.jpg" itemprop="image" alt="Avatar">
+    
+
+    <div class="media-body">
+      <h5 class="card-title" itemprop="name"><a href="https://jianchao-li.github.io">Jianchao Li</a></h5>
+      <h6 class="card-subtitle">Software Engineer</h6>
+      
+      <ul class="network-icon" aria-hidden="true">
+        
+          
+          
+          
+            
+          
+          
+          
+          
+          
+            
+          
+          <li>
+            <a itemprop="sameAs" href="https://github.com/jianchao-li" target="_blank" rel="noopener">
+              <i class="fab fa-github"></i>
+            </a>
+          </li>
+        
+          
+          
+          
+            
+          
+          
+          
+          
+          
+            
+          
+          <li>
+            <a itemprop="sameAs" href="https://www.linkedin.com/in/jianchao-li/" target="_blank" rel="noopener">
+              <i class="fab fa-linkedin"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+
+
+      
+      
+    
+
+    
+
+    
+
+
+  </div>
+</article>
+
+      
+
+    
+    
+
+    
+    
+    
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.imagesloaded/4.1.4/imagesloaded.pkgd.min.js" integrity="sha256-lqvxZrPLtfffUl2G/e7szqSvPBILGbwmsGE1MKlOi0Q=" crossorigin="anonymous"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.isotope/3.0.6/isotope.pkgd.min.js" integrity="sha256-CBrpuqrMhXwcLLUd5tvQ4euBHCdh7wGlDfNz8vbu/iI=" crossorigin="anonymous"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/fancybox/3.2.5/jquery.fancybox.min.js" integrity="sha256-X5PoE3KU5l+JcX+w09p/wHl9AzK333C4hJ2I9S5mD4M=" crossorigin="anonymous"></script>
+
+      
+
+      
+        
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.6/highlight.min.js" integrity="sha256-aYTdUrn6Ow1DDgh5JTc3aDGnnju48y/1c8s1dgkYPQ8=" crossorigin="anonymous"></script>
+        
+      
+
+      
+      
+    
+
+    
+    
+
+    
+    
+    
+
+    
+    
+    <script>hljs.initHighlightingOnLoad();</script>
+    
+
+    
+    
+    <script>
+      const search_index_filename = "/index.json";
+      const i18n = {
+        'placeholder': "Search...",
+        'results': "results found",
+        'no_results': "No results found"
+      };
+      const content_type = {
+        'post': "Posts",
+        'project': "Projects",
+        'publication' : "Publications",
+        'talk' : "Talks"
+        };
+    </script>
+    
+
+    
+    
+
+    
+    
+    <script id="search-hit-fuse-template" type="text/x-template">
+      <div class="search-hit" id="summary-{{key}}">
+      <div class="search-hit-content">
+        <div class="search-hit-name">
+          <a href="{{relpermalink}}">{{title}}</a>
+          <div class="article-metadata search-hit-type">{{type}}</div>
+          <p class="search-hit-description">{{snippet}}</p>
+        </div>
+      </div>
+      </div>
+    </script>
+    
+
+    
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/3.2.1/fuse.min.js" integrity="sha256-VzgmKYmhsGNNN4Ph1kMW+BjoYJM2jV5i4IlFoeZA9XI=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mark.js/8.11.1/jquery.mark.min.js" integrity="sha256-4HLtjeVgH0eIB3aZ9mLYF6E8oU5chNdjU6p6rrXpl9U=" crossorigin="anonymous"></script>
+    
+
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+      
+    
+    
+    
+    
+    <script src="/js/academic.min.2c0ed0f1c5e31a3ea5ad3cac8f66297e.js"></script>
+
+    
+
+
+
+
+
+
+  
+  <div class="container">
+    <footer class="site-footer">
+  
+
+  <p class="powered-by">
+    © 2023 &middot; 
+
+    Powered by the
+    <a href="https://sourcethemes.com/academic/" target="_blank" rel="noopener">Academic theme</a> for
+    <a href="https://gohugo.io" target="_blank" rel="noopener">Hugo</a>.
+
+    
+    <span class="float-right" aria-hidden="true">
+      <a href="#" id="back_to_top">
+        <span class="button_icon">
+          <i class="fas fa-chevron-up fa-2x"></i>
+        </span>
+      </a>
+    </span>
+    
+  </p>
+</footer>
+
+  </div>
+  
+
+  
+<div id="modal" class="modal fade" role="dialog">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Cite</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <pre><code class="tex hljs"></code></pre>
+      </div>
+      <div class="modal-footer">
+        <a class="btn btn-outline-primary my-1 js-copy-cite" href="#" target="_blank">
+          <i class="fas fa-copy"></i> Copy
+        </a>
+        <a class="btn btn-outline-primary my-1 js-download-cite" href="#" target="_blank">
+          <i class="fas fa-download"></i> Download
+        </a>
+        <div id="modal-error"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
